@@ -11,8 +11,8 @@ import qs.Ui
 // NetworkManager has.
 Panel {
   id: root
-  moduleName: "io.github.rawritude.hotspot"
-  ipcTarget: "io.github.rawritude.hotspot"
+  moduleName: "io.github.rawritude.simple-hotspot"
+  ipcTarget: "io.github.rawritude.simple-hotspot"
   manageIpc: false
 
   // Required: without an implicit size the button's `anchors.fill: parent`
@@ -48,7 +48,7 @@ Panel {
   }
 
   IpcHandler {
-    target: "io.github.rawritude.hotspot"
+    target: "io.github.rawritude.simple-hotspot"
     function open(): void { root.open() }
     function close(): void { root.close() }
     function toggle(): void { root.toggle() }

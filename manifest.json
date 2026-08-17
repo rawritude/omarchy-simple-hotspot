@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "id": "io.github.rawritude.hotspot",
-  "name": "Hotspot",
+  "id": "io.github.rawritude.simple-hotspot",
+  "name": "Simple Hotspot",
   "version": "1.0.0",
   "author": "rawritude",
   "license": "MIT",
-  "description": "Share this laptop's Wi-Fi uplink with a phone, without dropping the uplink. Built for one-device networks — planes, hotels, conference Wi-Fi — where the laptop holds the paid session and the phone joins a local AP NAT'd out through it. A toggle and a password field; the SSID and password persist so a phone that has joined once reconnects on its own.",
+  "description": "Share this laptop's Wi-Fi uplink with a phone, without dropping the uplink. Built for one-device networks \u2014 planes, hotels, conference Wi-Fi \u2014 where the laptop holds the paid session and the phone joins a local AP NAT'd out through it. A toggle and a password field; the SSID and password persist so a phone that has joined once reconnects on its own.",
   "kinds": [
     "bar-widget"
   ],
@@ -13,7 +13,7 @@
     "barWidget": "Panel.qml"
   },
   "barWidget": {
-    "displayName": "Hotspot",
+    "displayName": "Simple Hotspot",
     "description": "Share the current Wi-Fi uplink with a phone; the uplink stays connected.",
     "category": "Network",
     "allowMultiple": false,

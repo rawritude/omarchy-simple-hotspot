@@ -1,4 +1,4 @@
-# Hotspot — share your Wi-Fi uplink from the Omarchy bar
+# Simple Hotspot — share your Wi-Fi uplink from the Omarchy bar
 
 Share the laptop's Wi-Fi connection with a phone **without dropping the laptop's own
 connection**. A toggle and a password field, nothing else.
@@ -38,8 +38,8 @@ Developed on an ASUS ROG Zephyrus G14 (GA403WM) with a MediaTek MT7925, on Omarc
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/rawritude/omarchy-hotspot.git --enable
-omarchy bar move io.github.rawritude.hotspot --section right
+omarchy plugin add https://github.com/rawritude/omarchy-simple-hotspot.git --enable
+omarchy bar move io.github.rawritude.simple-hotspot --section right
 ```
 
 Then install the two helpers, which the plugin calls:
@@ -58,7 +58,7 @@ command, and that command validates its own arguments — see below.
 ## Removing it
 
 ```bash
-omarchy plugin remove io.github.rawritude.hotspot
+omarchy plugin remove io.github.rawritude.simple-hotspot
 sudo rm -f /usr/local/bin/hotspot-share /usr/local/bin/phone-share-vif \
            /etc/sudoers.d/hotspot-share
 nmcli connection delete Hotspot     # removes the stored SSID and password
@@ -75,9 +75,9 @@ Your phone sees a network named `<hostname>-share`.
 Keys in the panel: `t` toggle, `r` refresh. IPC for keybinds:
 
 ```bash
-omarchy-shell io.github.rawritude.hotspot toggle
-omarchy-shell io.github.rawritude.hotspot on
-omarchy-shell io.github.rawritude.hotspot off
+omarchy-shell io.github.rawritude.simple-hotspot toggle
+omarchy-shell io.github.rawritude.simple-hotspot on
+omarchy-shell io.github.rawritude.simple-hotspot off
 ```
 
 The CLI works standalone too: `hotspot-share on|off|status|info|set-password|set-ssid`.
