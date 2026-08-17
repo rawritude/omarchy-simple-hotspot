@@ -55,21 +55,25 @@ case "$action" in
     [[ -e "/sys/class/net/$base" ]] || { echo "no such base iface" >&2; exit 2; }
 
     existing="$(iface_type "$ap")"
+
+    # Anything that already exists and is not ours is refused, whatever its
+    # type. An earlier version accepted a pre-existing interface of type AP,
+    # which let a caller adopt an access point this helper never created — one
+    # belonging to hostapd, or another hotspot tool — and then destroy it
+    # through `del`. Under `allow_active: yes` that needs no authentication, so
+    # "it looks like an AP" is not evidence of ownership.
+    if [[ -n "$existing" && ! -e "$MARKERS/$ap" ]]; then
+      echo "refusing: $ap already exists (type $existing) and was not created by this helper" >&2
+      exit 2
+    fi
+
     if [[ -n "$existing" && "$existing" != "AP" ]]; then
-      if [[ -e "$MARKERS/$ap" ]]; then
-        # Ours, left behind. NetworkManager flips the vif back to `managed` when
-        # the hotspot connection stops, so if a teardown never ran — crash, kill,
-        # logout — the interface survives in a state this guard would otherwise
-        # refuse for the rest of the boot, with no way out from the widget.
-        # The marker proves we created it, so recreating it is safe.
-        "$IW" dev "$ap" del 2>/dev/null || true
-        existing=""
-      else
-        # No marker: not ours. The name pattern permits "wlp99s0" just as readily
-        # as "ap0", so without this an add could be aimed at the station interface.
-        echo "refusing: $ap already exists as type $existing" >&2
-        exit 2
-      fi
+      # Ours, left behind. NetworkManager flips the vif back to `managed` when
+      # the hotspot connection stops, so if a teardown never ran — crash, kill,
+      # logout — the interface survives in a state that would otherwise be
+      # unusable for the rest of the boot. The marker proves it is ours.
+      "$IW" dev "$ap" del 2>/dev/null || true
+      existing=""
     fi
 
     if [[ -z "$existing" ]]; then
@@ -78,7 +82,7 @@ case "$action" in
       # Locally-administered bit set, rest inherited from the base radio.
       "$IP" link set "$ap" address "02${mac:2}" 2>/dev/null || true
     fi
-    mkdir -p "$MARKERS" && : > "$MARKERS/$ap"
+    mkdir -p -m 0700 "$MARKERS" && : > "$MARKERS/$ap"
     "$IP" link set "$ap" up
     ;;
 
@@ -94,13 +98,17 @@ case "$action" in
       exit 0
     fi
 
-    # Delete only what we made. The marker is the primary signal; type==AP is
-    # accepted too so a vif created before this marker existed, or by another
-    # tool, can still be cleaned up. Either way the station interface — type
-    # managed, no marker — is refused, which is the case that matters: under
-    # NOPASSWD, dropping the uplink would need no password at all.
-    if [[ ! -e "$MARKERS/$ap" && "$t" != "AP" ]]; then
-      echo "refusing: $ap is type $t and was not created by this helper" >&2
+    # The marker is required, with no fallback. An earlier version also accepted
+    # type==AP so that a vif created before markers existed could still be tidied
+    # up, but that convenience was the whole hole: it let any caller in the
+    # active session destroy an access point this helper never created, which is
+    # precisely what the polkit action promises it cannot do. Ownership is what
+    # the marker records; the interface's type is not evidence of it.
+    #
+    # An unmarked interface therefore has to be removed by hand as root, or left
+    # for the next reboot, which clears both the vifs and /run together.
+    if [[ ! -e "$MARKERS/$ap" ]]; then
+      echo "refusing: $ap was not created by this helper" >&2
       exit 2
     fi
 
