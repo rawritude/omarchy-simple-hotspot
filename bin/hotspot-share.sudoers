@@ -1,0 +1,6 @@
+# Replace YOURUSER with your username before installing.
+# Only the virtual-AP create/destroy needs privilege. The helper validates its
+# own arguments (interface names matched against ^[a-z][a-z0-9]{0,14}$ and the
+# base interface must exist), so this grant cannot be turned into a general
+# root shell.
+YOURUSER ALL=(root) NOPASSWD: /usr/local/bin/phone-share-vif

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Minimal privileged helper for Quick Toggles: create/destroy a virtual AP
+# interface on the WiFi radio so a hotspot can run alongside the live uplink.
+# Invoked only via sudo NOPASSWD from ~/.local/bin/phone-share. Args validated.
+set -euo pipefail
+action="${1:-}"; base="${2:-}"; ap="${3:-ap0}"
+[[ "$ap"   =~ ^[a-z][a-z0-9]{0,14}$ ]] || { echo "bad ap name"; exit 2; }
+case "$action" in
+  add)
+    [[ "$base" =~ ^[a-z][a-z0-9]{0,14}$ ]] || { echo "bad base name"; exit 2; }
+    [[ -e "/sys/class/net/$base" ]] || { echo "no such base iface"; exit 2; }
+    if ! /usr/sbin/iw dev | grep -qw "$ap"; then
+      /usr/sbin/iw dev "$base" interface add "$ap" type __ap
+      mac="$(cat "/sys/class/net/$base/address")"
+      /usr/bin/ip link set "$ap" address "02${mac:2}" 2>/dev/null || true
+    fi
+    /usr/bin/ip link set "$ap" up
+    ;;
+  del)
+    if /usr/sbin/iw dev | grep -qw "$ap"; then /usr/sbin/iw dev "$ap" del; fi
+    ;;
+  *) echo "usage: phone-share-vif add|del <base> <ap>"; exit 2 ;;
+esac

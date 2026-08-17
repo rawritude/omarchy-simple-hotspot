@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# Share this laptop's Wi-Fi uplink with a phone.
+#
+# The case this exists for: in-flight and hotel Wi-Fi that allows one device.
+# The laptop holds the paid/authenticated session and the phone joins a local
+# AP whose traffic is NAT'd out through it, so there is no switching back and
+# forth.
+#
+# The AP runs on a *virtual* interface so the uplink never drops. The radio can
+# only work one channel at a time, so the AP is pinned to whatever channel the
+# uplink is currently on — that changes between planes and hotels, so it is
+# re-read on every start.
+#
+# NetworkManager does the AP, DHCP, DNS and NAT itself via `ipv4.method shared`.
+# No hostapd, no dnsmasq, no iptables rules to install or clean up.
+#
+# The connection profile is created ONCE and then only brought up and down, so
+# the SSID and password are stable for as long as you keep them — a phone that
+# has joined before reconnects on its own the moment the hotspot comes up.
+# Only the virtual-interface create/destroy is privileged.
+
+set -euo pipefail
+
+AP_IF="ap0"
+CON="Hotspot"
+VIF_HELPER="/usr/local/bin/phone-share-vif"
+
+have_con() { nmcli -t -f NAME connection show 2>/dev/null | grep -qx "$CON"; }
+
+uplink_if() {
+  nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null \
+    | awk -F: -v ap="$AP_IF" '$2=="wifi" && $3 ~ /^connected/ && $1!=ap {print $1; exit}'
+}
+
+# The AP must sit on the uplink's channel; a mismatch simply fails to start.
+active_band_chan() {
+  local dev="$1" freq
+  freq="$(iw dev "$dev" link 2>/dev/null | awk '/freq:/{print $2}')"; freq="${freq%%.*}"
+  if [[ -z "$freq" ]]; then echo "bg 6"; return; fi
+  if (( freq >= 4900 )); then echo "a $(( (freq-5000)/5 ))"; else echo "bg $(( (freq-2407)/5 ))"; fi
+}
+
+ensure_con() {   # create the profile once; NM then remembers ssid+psk itself
+  have_con && return 0
+  local ssid="${1:-$(hostname)-share}" psk="${2:-}"
+  if [[ -z "$psk" ]]; then
+    echo "No hotspot password set yet. Run: hotspot-share set-password <password>" >&2
+    return 1
+  fi
+  nmcli connection add type wifi ifname "$AP_IF" con-name "$CON" autoconnect no \
+    ssid "$ssid" 802-11-wireless.mode ap \
+    802-11-wireless-security.key-mgmt wpa-psk 802-11-wireless-security.psk "$psk" \
+    ipv4.method shared ipv6.method ignore >/dev/null
+}
+
+cmd_on() {
+  [[ -x "$VIF_HELPER" ]] || { echo "ERR: $VIF_HELPER not installed" >&2; exit 3; }
+  have_con || { echo "ERR: no hotspot configured. Run: hotspot-share set-password <password>" >&2; exit 1; }
+
+  local up; up="$(uplink_if)"
+  [[ -n "$up" ]] || { echo "ERR: no connected Wi-Fi uplink to share" >&2; exit 1; }
+
+  local band chan; read -r band chan <<<"$(active_band_chan "$up")"
+
+  sudo -n "$VIF_HELPER" add "$up" "$AP_IF" \
+    || { echo "ERR: could not create the AP interface" >&2; exit 1; }
+
+  # Re-pin to the current uplink channel, but leave ssid/psk alone so the phone
+  # still recognises the network.
+  nmcli connection modify "$CON" \
+    802-11-wireless.band "$band" 802-11-wireless.channel "$chan" \
+    connection.interface-name "$AP_IF" >/dev/null
+
+  if ! nmcli connection up "$CON" >/dev/null 2>&1; then
+    echo "ERR: hotspot failed to start (uplink on $band ch$chan)" >&2
+    sudo -n "$VIF_HELPER" del "$AP_IF" 2>/dev/null || true
+    exit 1
+  fi
+  echo "on  ssid=$(get_ssid)  sharing=$up  band=$band ch=$chan"
+}
+
+cmd_off() {
+  nmcli connection down "$CON" >/dev/null 2>&1 || true
+  # The profile is deliberately NOT deleted: that is what keeps ssid and
+  # password stable so a phone reconnects without being re-paired.
+  [[ -x "$VIF_HELPER" ]] && sudo -n "$VIF_HELPER" del "$AP_IF" 2>/dev/null || true
+  echo "off"
+}
+
+get_ssid() { nmcli -g 802-11-wireless.ssid connection show "$CON" 2>/dev/null || true; }
+get_psk()  { nmcli -s -g 802-11-wireless-security.psk connection show "$CON" 2>/dev/null || true; }
+
+cmd_status() {
+  if nmcli -t -f NAME connection show --active 2>/dev/null | grep -qx "$CON"; then
+    echo "on"
+  else
+    echo "off"
+  fi
+}
+
+cmd_info() {   # ssid|password|state — for the bar widget
+  printf '%s|%s|%s\n' "$(get_ssid)" "$(get_psk)" "$(cmd_status)"
+}
+
+cmd_set_password() {
+  local psk="${1:-}"
+  [[ ${#psk} -ge 8 ]] || { echo "ERR: WPA2 needs at least 8 characters" >&2; exit 2; }
+  if have_con; then
+    nmcli connection modify "$CON" 802-11-wireless-security.psk "$psk" >/dev/null
+    echo "password updated (reconnect the phone once, then it is remembered)"
+  else
+    ensure_con "$(hostname)-share" "$psk" && echo "hotspot created; password set"
+  fi
+}
+
+cmd_set_ssid() {
+  local ssid="${1:-}"
+  [[ -n "$ssid" ]] || { echo "ERR: ssid required" >&2; exit 2; }
+  have_con || { echo "ERR: set a password first" >&2; exit 1; }
+  nmcli connection modify "$CON" 802-11-wireless.ssid "$ssid" >/dev/null
+  echo "ssid set to $ssid (the phone will see this as a new network)"
+}
+
+case "${1:-status}" in
+  on)            cmd_on ;;
+  off)           cmd_off ;;
+  toggle)        [[ "$(cmd_status)" == on ]] && cmd_off || cmd_on ;;
+  status)        cmd_status ;;
+  info)          cmd_info ;;
+  set-password)  shift; cmd_set_password "${1:-}" ;;
+  set-ssid)      shift; cmd_set_ssid "${1:-}" ;;
+  *)
+    cat >&2 <<'EOF'
+usage: hotspot-share <command>
+
+  on | off | toggle     start/stop sharing the current Wi-Fi uplink
+  status                on | off
+  info                  ssid|password|state
+  set-password <pw>     set the hotspot password (min 8 chars, remembered)
+  set-ssid <name>       rename the hotspot (phones will treat it as new)
+EOF
+    exit 2 ;;
+esac

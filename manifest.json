@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.rawritude.hotspot",
+  "name": "Hotspot",
+  "version": "1.0.0",
+  "author": "rawritude",
+  "license": "MIT",
+  "description": "Share this laptop's Wi-Fi uplink with a phone, without dropping the uplink. Built for one-device networks — planes, hotels, conference Wi-Fi — where the laptop holds the paid session and the phone joins a local AP NAT'd out through it. A toggle and a password field; the SSID and password persist so a phone that has joined once reconnects on its own.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Hotspot",
+    "description": "Share the current Wi-Fi uplink with a phone; the uplink stays connected.",
+    "category": "Network",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "idlePollMs": 120000,
+      "activePollMs": 3000,
+      "hideWhenOff": false
+    },
+    "schema": [
+      {
+        "key": "idlePollMs",
+        "type": "integer",
+        "label": "State refresh while the panel is closed (ms)",
+        "min": 10000,
+        "max": 600000,
+        "step": 10000,
+        "defaultValue": 120000
+      },
+      {
+        "key": "activePollMs",
+        "type": "integer",
+        "label": "State refresh while the panel is open (ms)",
+        "min": 1000,
+        "max": 30000,
+        "step": 1000,
+        "defaultValue": 3000
+      },
+      {
+        "key": "hideWhenOff",
+        "type": "boolean",
+        "label": "Hide the bar icon while the hotspot is off",
+        "defaultValue": false
+      }
+    ]
+  }
+}
