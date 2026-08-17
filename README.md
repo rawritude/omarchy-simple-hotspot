@@ -42,27 +42,31 @@ omarchy plugin add https://github.com/rawritude/omarchy-simple-hotspot.git --ena
 omarchy bar move io.github.rawritude.simple-hotspot --section right
 ```
 
-Then install the two helpers, which the plugin calls:
+Then install the helpers and the polkit action. `omarchy plugin add` clones into
+`~/.config/omarchy/plugins/`, so run it from there:
 
 ```bash
-sudo install -Dm755 bin/hotspot-share    /usr/local/bin/hotspot-share
-sudo install -Dm755 bin/phone-share-vif  /usr/local/bin/phone-share-vif
-sudo install -Dm440 bin/hotspot-share.sudoers /etc/sudoers.d/hotspot-share
-sudo visudo -cf /etc/sudoers.d/hotspot-share    # verify before trusting it
+cd ~/.config/omarchy/plugins/io.github.rawritude.simple-hotspot
+sudo ./contrib/install.sh
 sudo pacman -S --needed dnsmasq
 ```
 
-Edit the sudoers file first and replace the username with your own. It grants **one**
-command, and that command validates its own arguments — see below.
+Nothing to edit: the polkit action is scoped to whoever is logged in locally and active,
+so there is no username to substitute. Earlier versions used a hand-edited
+`/etc/sudoers.d` rule for the same command; the installer removes it if it finds one.
 
 ## Removing it
 
 ```bash
 omarchy plugin remove io.github.rawritude.simple-hotspot
-sudo rm -f /usr/local/bin/hotspot-share /usr/local/bin/phone-share-vif \
-           /etc/sudoers.d/hotspot-share
+sudo ~/.config/omarchy/plugins/io.github.rawritude.simple-hotspot/contrib/install.sh --uninstall
 nmcli connection delete Hotspot     # removes the stored SSID and password
 ```
+
+`--uninstall` removes both helpers and the polkit action — the only things this plugin puts
+outside its own directory. It deliberately leaves the stored Hotspot connection alone, since
+deleting it would silently un-pair every phone that has joined; the `nmcli` line above is
+there for when you do want that.
 
 `dnsmasq` is left installed since other things may use it. Your own Wi-Fi connections are
 untouched.
@@ -109,8 +113,16 @@ each toggle is what makes a phone treat it as a new network every time; keeping 
 SSID and PSK are stable and reconnection is automatic.
 
 **One narrow privilege.** Only creating and destroying the virtual AP interface needs root.
-Because that grant is `NOPASSWD`, everything the helper will do is something any process
-running as you can do without a password — so the helper constrains itself accordingly:
+It runs through `pkexec` against a polkit action scoped with `allow_active`, so the grant is
+reachable only from a session that is logged in locally and currently active — not from an
+SSH session, a timer, or a background process. That is the main reason it is polkit and not
+the `NOPASSWD` sudoers rule earlier versions shipped: sudo has no notion of *where* a call
+came from. Two lesser reasons — a malformed `/etc/sudoers.d` file can break `sudo`
+system-wide, and the sudoers rule had to be hand-edited to insert a username.
+
+`allow_active` is `yes`, so there is no prompt: this is a bar toggle pressed when a phone
+needs the network, and a password on every press would defeat it. What it authorises is
+narrow, and the helper constrains itself further:
 
 - interface names must match `^[a-z][a-z0-9]{0,14}$` (no paths, no shell metacharacters), and
   every command it runs is an absolute path
@@ -121,8 +133,8 @@ running as you can do without a password — so the helper constrains itself acc
   them — same phy, and NetworkManager randomises the vif's MAC. Type is not sufficient either,
   because NM flips the vif back to `managed` once the hotspot connection stops
 
-So the grant cannot be turned into a general root shell, nor aimed at your uplink to drop it.
-No polkit rule, and nothing passwordless beyond that single argument-checked command.
+So the grant cannot be turned into a general root shell, nor aimed at your uplink to drop it,
+and nothing is passwordless beyond that one argument-checked command.
 
 **No shell interpolation.** The password comes from a text field and is passed as an argv
 element, never as part of a command string.
@@ -138,9 +150,11 @@ element, never as part of a command string.
   the QML shell framework, and `Process`/`StdioCollector` for talking to the helper.
 - **[omarchy-hotspot](https://github.com/shivamnarkar47/omarchy-hotspot)** by shivamnarkar47
   (MIT) — an independent implementation of the same idea, read while building this one. It
-  takes a different route (hostapd, a hand-configured dnsmasq, explicit iptables NAT and a
-  polkit rule); this plugin leans on NetworkManager instead. Worth a look if you need the
-  control that approach gives you.
+  takes a different route — hostapd, a hand-configured dnsmasq and explicit iptables NAT —
+  where this plugin leans on NetworkManager's `ipv4.method shared` for all of it. Both
+  independently arrived at running the AP on a virtual interface so the uplink survives, and
+  at polkit rather than sudo for the one privileged call. Worth a look if you want the
+  control that a hand-rolled stack gives you.
 
 ## License
 

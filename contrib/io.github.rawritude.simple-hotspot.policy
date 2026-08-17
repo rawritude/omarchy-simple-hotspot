@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/software/polkit/policyconfig-1.dtd">
+<policyconfig>
+  <vendor>Simple Hotspot</vendor>
+  <vendor_url>https://github.com/rawritude/omarchy-simple-hotspot</vendor_url>
+
+  <!--
+    This replaced a NOPASSWD sudoers rule granting the same one command.
+
+    The decisive difference is scope, not convenience. A sudoers grant has no
+    notion of where a call came from: any process running as that user — an SSH
+    session, a timer, a compromised background app — could invoke the helper.
+    allow_active applies only to a session that is logged in locally and
+    currently active, so the same grant stops being reachable from anywhere
+    else on the machine.
+
+    Two lesser reasons: a malformed file in /etc/sudoers.d can break sudo
+    system-wide, whereas a broken action here only stops the button working;
+    and the sudoers file had to be hand-edited to insert a username, which is
+    an install step that silently produces a wrong grant when fumbled.
+
+    allow_active is `yes` rather than an auth_admin variant deliberately. This
+    is a toggle in a status bar, pressed when a phone needs the network, and a
+    password prompt on every press would make it useless. What it authorises is
+    narrow and reversible: create or destroy one virtual AP interface. The
+    helper refuses to touch anything it did not create, so this cannot be
+    turned on the station interface to drop the uplink.
+  -->
+  <action id="io.github.rawritude.simple-hotspot.vif">
+    <description>Create or destroy the hotspot's virtual AP interface</description>
+    <message>Authentication is required to manage the hotspot interface</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/phone-share-vif</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+</policyconfig>

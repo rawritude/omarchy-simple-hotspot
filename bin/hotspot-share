@@ -17,7 +17,10 @@
 # The connection profile is created ONCE and then only brought up and down, so
 # the SSID and password are stable for as long as you keep them — a phone that
 # has joined before reconnects on its own the moment the hotspot comes up.
-# Only the virtual-interface create/destroy is privileged.
+# Only the virtual-interface create/destroy is privileged, and it goes through
+# pkexec against a polkit action scoped to an active local session — not a
+# NOPASSWD sudoers rule, which any process running as you could have invoked
+# from anywhere, including over SSH.
 
 set -euo pipefail
 
@@ -62,7 +65,7 @@ cmd_on() {
 
   local band chan; read -r band chan <<<"$(active_band_chan "$up")"
 
-  sudo -n "$VIF_HELPER" add "$up" "$AP_IF" \
+  pkexec "$VIF_HELPER" add "$up" "$AP_IF" \
     || { echo "ERR: could not create the AP interface" >&2; exit 1; }
 
   # Re-pin to the current uplink channel, but leave ssid/psk alone so the phone
@@ -73,7 +76,7 @@ cmd_on() {
 
   if ! nmcli connection up "$CON" >/dev/null 2>&1; then
     echo "ERR: hotspot failed to start (uplink on $band ch$chan)" >&2
-    sudo -n "$VIF_HELPER" del "$AP_IF" 2>/dev/null || true
+    pkexec "$VIF_HELPER" del "$AP_IF" 2>/dev/null || true
     exit 1
   fi
   echo "on  ssid=$(get_ssid)  sharing=$up  band=$band ch=$chan"
@@ -83,7 +86,7 @@ cmd_off() {
   nmcli connection down "$CON" >/dev/null 2>&1 || true
   # The profile is deliberately NOT deleted: that is what keeps ssid and
   # password stable so a phone reconnects without being re-paired.
-  [[ -x "$VIF_HELPER" ]] && sudo -n "$VIF_HELPER" del "$AP_IF" 2>/dev/null || true
+  [[ -x "$VIF_HELPER" ]] && pkexec "$VIF_HELPER" del "$AP_IF" 2>/dev/null || true
   echo "off"
 }
 
