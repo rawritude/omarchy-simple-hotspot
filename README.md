@@ -128,10 +128,15 @@ narrow, and the helper constrains itself further:
   every command it runs is an absolute path
 - `add` requires the base interface to exist and refuses a target that already exists as
   anything other than an AP
-- `del` deletes only interfaces this helper created, tracked by a marker under `/run`. The
-  name pattern alone permits `wlp99s0` as readily as `ap0`, and nothing intrinsic separates
-  them — same phy, and NetworkManager randomises the vif's MAC. Type is not sufficient either,
-  because NM flips the vif back to `managed` once the hotspot connection stops
+- `add` and `del` both act **only on interfaces this helper created**, proven by a marker file
+  in root-owned `/run` (mode `0700`, so an unprivileged caller cannot forge one). Nothing
+  intrinsic identifies our vif — same phy as the station interface, and NetworkManager
+  randomises the vif's MAC — and the interface's *type* is not evidence of ownership either.
+  An earlier version accepted any interface of type `AP`, which would have let a caller adopt
+  or destroy an access point belonging to hostapd or another tool; under `allow_active` that
+  needs no authentication, so the marker is required with no fallback. The cost is that an
+  unmarked leftover must be removed by hand as root, or left for the next reboot, which clears
+  the vifs and `/run` together
 
 So the grant cannot be turned into a general root shell, nor aimed at your uplink to drop it,
 and nothing is passwordless beyond that one argument-checked command.
