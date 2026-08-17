@@ -2,9 +2,10 @@
 # Minimal privileged helper: create/destroy a virtual AP interface on the WiFi
 # radio so a hotspot can run alongside the live uplink.
 #
-# Invoked only via `sudo -n` from hotspot-share, under a NOPASSWD grant. That
-# grant is the reason the validation below is not decoration: anything this
-# script will do, any process running as that user can do without a password.
+# Invoked only via `pkexec` from hotspot-share, against a polkit action scoped
+# `allow_active`. That grant is the reason the validation below is not
+# decoration: anything this script will do, a locally logged-in session can do
+# without being asked for a password.
 #
 #   phone-share-vif add <base> [ap]
 #   phone-share-vif del [ap]
@@ -55,10 +56,20 @@ case "$action" in
 
     existing="$(iface_type "$ap")"
     if [[ -n "$existing" && "$existing" != "AP" ]]; then
-      # The name pattern permits "wlp99s0" just as readily as "ap0", so without
-      # this an add could be aimed at the station interface.
-      echo "refusing: $ap already exists as type $existing" >&2
-      exit 2
+      if [[ -e "$MARKERS/$ap" ]]; then
+        # Ours, left behind. NetworkManager flips the vif back to `managed` when
+        # the hotspot connection stops, so if a teardown never ran — crash, kill,
+        # logout — the interface survives in a state this guard would otherwise
+        # refuse for the rest of the boot, with no way out from the widget.
+        # The marker proves we created it, so recreating it is safe.
+        "$IW" dev "$ap" del 2>/dev/null || true
+        existing=""
+      else
+        # No marker: not ours. The name pattern permits "wlp99s0" just as readily
+        # as "ap0", so without this an add could be aimed at the station interface.
+        echo "refusing: $ap already exists as type $existing" >&2
+        exit 2
+      fi
     fi
 
     if [[ -z "$existing" ]]; then

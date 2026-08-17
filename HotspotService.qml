@@ -73,6 +73,8 @@ Item {
     if (actionProc.running) return
     svc.busy = true
     svc.lastError = ""
+    // Cleared so the key set by setPassword() is not carried into unrelated calls.
+    actionProc.environment = ({})
     actionProc.command = ["hotspot-share", want ? "on" : "off"]
     actionProc.running = true
   }
@@ -82,7 +84,12 @@ Item {
     if (String(pw).length < 8) { svc.lastError = "WPA2 needs at least 8 characters"; return }
     svc.busy = true
     svc.lastError = ""
-    actionProc.command = ["hotspot-share", "set-password", String(pw)]
+    // The key goes in the environment, never in the argument list.
+    // /proc/<pid>/cmdline is world-readable, so a PSK passed as an argument is
+    // visible to every local user via `ps` for as long as the helper runs;
+    // /proc/<pid>/environ is 0400. The helper keeps it off nmcli's argv too.
+    actionProc.environment = ({ "HOTSPOT_PSK": String(pw) })
+    actionProc.command = ["hotspot-share", "set-password"]
     actionProc.running = true
   }
 

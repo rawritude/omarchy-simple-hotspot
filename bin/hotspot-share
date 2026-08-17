@@ -50,10 +50,26 @@ ensure_con() {   # create the profile once; NM then remembers ssid+psk itself
     echo "No hotspot password set yet. Run: hotspot-share set-password <password>" >&2
     return 1
   fi
+  # Created WITHOUT the psk, which is then set over stdin by set_psk. Passing it
+  # here would put the key in nmcli's argv, and /proc/<pid>/cmdline is
+  # world-readable — any local user could read it with ps while this runs.
   nmcli connection add type wifi ifname "$AP_IF" con-name "$CON" autoconnect no \
     ssid "$ssid" 802-11-wireless.mode ap \
-    802-11-wireless-security.key-mgmt wpa-psk 802-11-wireless-security.psk "$psk" \
+    802-11-wireless-security.key-mgmt wpa-psk \
     ipv4.method shared ipv6.method ignore >/dev/null
+  set_psk "$psk"
+}
+
+# Set the pre-shared key without it ever appearing in a process argument.
+#
+# `printf` is a bash builtin, so it forks nothing and creates no /proc entry;
+# the key reaches nmcli over a pipe on stdin, and nmcli's own argv is just
+# `connection edit <name>`. This is the only route nmcli offers that keeps a
+# secret off the command line — `connection modify ... psk <value>` cannot.
+set_psk() {
+  local psk="$1"
+  printf 'set 802-11-wireless-security.psk %s\nsave\nquit\n' "$psk" \
+    | nmcli connection edit "$CON" >/dev/null
 }
 
 cmd_on() {
@@ -106,10 +122,25 @@ cmd_info() {   # ssid|password|state — for the bar widget
 }
 
 cmd_set_password() {
-  local psk="${1:-}"
+  # Preferred: HOTSPOT_PSK in the environment. /proc/<pid>/environ is 0400 and
+  # readable only by the owner, whereas an argument lands in world-readable
+  # /proc/<pid>/cmdline. The bar widget always uses this path.
+  local psk="${HOTSPOT_PSK-}"
+  if [[ -z "$psk" && $# -ge 1 ]]; then
+    psk="$1"
+    echo "warn: a password given on the command line is visible to other local users in ps." >&2
+    echo "      prefer:  HOTSPOT_PSK='...' hotspot-share set-password" >&2
+  fi
+  if [[ -z "$psk" ]]; then
+    if [[ -t 0 ]]; then
+      read -rsp "Hotspot password: " psk; echo >&2
+    else
+      read -r psk || true          # piped in
+    fi
+  fi
   [[ ${#psk} -ge 8 ]] || { echo "ERR: WPA2 needs at least 8 characters" >&2; exit 2; }
   if have_con; then
-    nmcli connection modify "$CON" 802-11-wireless-security.psk "$psk" >/dev/null
+    set_psk "$psk"
     echo "password updated (reconnect the phone once, then it is remembered)"
   else
     ensure_con "$(hostname)-share" "$psk" && echo "hotspot created; password set"
