@@ -109,10 +109,20 @@ each toggle is what makes a phone treat it as a new network every time; keeping 
 SSID and PSK are stable and reconnection is automatic.
 
 **One narrow privilege.** Only creating and destroying the virtual AP interface needs root.
-The helper that does it validates its arguments — interface names must match
-`^[a-z][a-z0-9]{0,14}$` and the base interface must exist — so the sudoers grant cannot be
-turned into a general root shell. No polkit rule, and nothing passwordless beyond that single
-argument-checked command.
+Because that grant is `NOPASSWD`, everything the helper will do is something any process
+running as you can do without a password — so the helper constrains itself accordingly:
+
+- interface names must match `^[a-z][a-z0-9]{0,14}$` (no paths, no shell metacharacters), and
+  every command it runs is an absolute path
+- `add` requires the base interface to exist and refuses a target that already exists as
+  anything other than an AP
+- `del` deletes only interfaces this helper created, tracked by a marker under `/run`. The
+  name pattern alone permits `wlp99s0` as readily as `ap0`, and nothing intrinsic separates
+  them — same phy, and NetworkManager randomises the vif's MAC. Type is not sufficient either,
+  because NM flips the vif back to `managed` once the hotspot connection stops
+
+So the grant cannot be turned into a general root shell, nor aimed at your uplink to drop it.
+No polkit rule, and nothing passwordless beyond that single argument-checked command.
 
 **No shell interpolation.** The password comes from a text field and is passed as an argv
 element, never as part of a command string.
